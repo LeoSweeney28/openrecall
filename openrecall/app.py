@@ -99,7 +99,7 @@ def timeline():
       <div class="slider-value" id="sliderValue">{{timestamps[0] | timestamp_to_human_readable }}</div>
     </div>
     <div class="image-container">
-      <img id="timestampImage" src="/static/{{timestamps[0]}}.webp" alt="Image for timestamp">
+      <img id="timestampImage" src="/static/{{timestamps[0]}}_ocr.webp" alt="Image for timestamp" onerror="this.onerror=null;this.src='/static/{{timestamps[0]}}.webp';">
     </div>
   </div>
   <script>
@@ -108,17 +108,28 @@ def timeline():
     const sliderValue = document.getElementById('sliderValue');
     const timestampImage = document.getElementById('timestampImage');
 
+    function setTimestampImage(timestamp) {
+      const highlightSrc = `/static/${timestamp}_ocr.webp`;
+      const fallbackSrc = `/static/${timestamp}.webp`;
+      timestampImage.onerror = () => {
+        if (!timestampImage.src.endsWith(fallbackSrc)) {
+          timestampImage.src = fallbackSrc;
+        }
+      };
+      timestampImage.src = highlightSrc;
+    }
+
     slider.addEventListener('input', function() {
       const reversedIndex = timestamps.length - 1 - slider.value;
       const timestamp = timestamps[reversedIndex];
       sliderValue.textContent = new Date(timestamp * 1000).toLocaleString();  // Convert to human-readable format
-      timestampImage.src = `/static/${timestamp}.webp`;
+      setTimestampImage(timestamp);
     });
 
     // Initialize the slider with a default value
     slider.value = timestamps.length - 1;
     sliderValue.textContent = new Date(timestamps[0] * 1000).toLocaleString();  // Convert to human-readable format
-    timestampImage.src = `/static/${timestamps[0]}.webp`;
+    setTimestampImage(timestamps[0]);
   </script>
 {% else %}
   <div class="container">
@@ -161,7 +172,7 @@ def search():
                     <div class="modal-dialog modal-xl" role="document" style="max-width: none; width: 100vw; height: 100vh; padding: 20px;">
                         <div class="modal-content" style="height: calc(100vh - 40px); width: calc(100vw - 40px); padding: 0;">
                             <div class="modal-body" style="padding: 0;">
-                                <img src="/static/{{ entry['timestamp'] }}.webp" alt="Image" style="width: 100%; height: 100%; object-fit: contain; margin: 0 auto;">
+                            <img src="/static/{{ entry['timestamp'] }}_ocr.webp" alt="Image" style="width: 100%; height: 100%; object-fit: contain; margin: 0 auto;" onerror="this.onerror=null;this.src='/static/{{ entry['timestamp'] }}.webp';">
                             </div>
                         </div>
                     </div>

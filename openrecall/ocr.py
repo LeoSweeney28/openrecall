@@ -10,9 +10,7 @@ ocr = ocr_predictor(
 )
 
 
-def extract_text_and_boxes(
-    image: Image.Image,
-) -> Tuple[str, List[Tuple[int, int, int, int]]]:
+def extract_text_and_boxes(image) -> Tuple[str, List[Tuple[int, int, int, int]]]:
     result = ocr([image])
     text_lines: List[str] = []
     boxes: List[Tuple[int, int, int, int]] = []
@@ -24,12 +22,11 @@ def extract_text_and_boxes(
                 for word in line.words:
                     line_words.append(word.value)
                     (x0, y0), (x1, y1) = word.geometry
-                    left = max(0, min(int(x0 * page_width), page_width))
-                    top = max(0, min(int(y0 * page_height), page_height))
-                    right = max(0, min(int(x1 * page_width), page_width))
-                    bottom = max(0, min(int(y1 * page_height), page_height))
-                    if right > left and bottom > top:
-                        boxes.append((left, top, right, bottom))
+                    left = int(x0 * page_width)
+                    top = int(y0 * page_height)
+                    right = int(x1 * page_width)
+                    bottom = int(y1 * page_height)
+                    boxes.append((left, top, right, bottom))
                 if line_words:
                     text_lines.append(" ".join(line_words))
             if block.lines:

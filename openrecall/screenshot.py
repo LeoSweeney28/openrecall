@@ -24,7 +24,7 @@ def downsample_for_similarity(img: np.ndarray, max_size: int = 320) -> np.ndarra
     height, width = img.shape[:2]
     if max(height, width) <= max_size:
         return img
-    step = max(1, int(np.ceil(max(height, width) / max_size)))
+    step = int(np.ceil(max(height, width) / max_size))
     return img[::step, ::step]
 
 

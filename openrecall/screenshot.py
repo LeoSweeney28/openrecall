@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List, Tuple
+from typing import List
 
 import mss
 import numpy as np
@@ -9,12 +9,23 @@ from PIL import Image
 from openrecall.config import screenshots_path, args
 from openrecall.database import insert_entry
 from openrecall.nlp import get_embedding
-from openrecall.ocr import extract_text_from_image
+from openrecall.ocr import (
+    extract_text_and_boxes,
+    highlight_text_boxes,
+)
 from openrecall.utils import (
     get_active_app_name,
     get_active_window_title,
     is_user_active,
 )
+
+
+def downsample_for_similarity(img: np.ndarray, max_size: int = 320) -> np.ndarray:
+    height, width = img.shape[:2]
+    if max(height, width) <= max_size:
+        return img
+    step = max(1, int(np.ceil(max(height, width) / max_size)))
+    return img[::step, ::step]
 
 
 def mean_structured_similarity_index(
@@ -37,8 +48,8 @@ def mean_structured_similarity_index(
         """Converts an RGB image to grayscale."""
         return 0.2989 * img[..., 0] + 0.5870 * img[..., 1] + 0.1140 * img[..., 2]
 
-    img1_gray: np.ndarray = rgb2gray(img1)
-    img2_gray: np.ndarray = rgb2gray(img2)
+    img1_gray: np.ndarray = rgb2gray(img1).astype(np.float32)
+    img2_gray: np.ndarray = rgb2gray(img2).astype(np.float32)
     mu1: float = np.mean(img1_gray)
     mu2: float = np.mean(img2_gray)
     sigma1_sq = np.var(img1_gray)
@@ -63,7 +74,9 @@ def is_similar(
     Returns:
         True if the images are similar, False otherwise.
     """
-    similarity: float = mean_structured_similarity_index(img1, img2)
+    reduced_img1 = downsample_for_similarity(img1)
+    reduced_img2 = downsample_for_similarity(img2)
+    similarity: float = mean_structured_similarity_index(reduced_img1, reduced_img2)
     return similarity >= similarity_threshold
 
 
@@ -129,11 +142,10 @@ def record_screenshots_thread() -> None:
         # Ensure we have a last_screenshot for each current_screenshot
         # This handles cases where monitor setup might change (though unlikely mid-run)
         if len(last_screenshots) != len(current_screenshots):
-             # If monitor count changes, reset last_screenshots and continue
-             last_screenshots = current_screenshots
-             time.sleep(3)
-             continue
-
+            # If monitor count changes, reset last_screenshots and continue
+            last_screenshots = current_screenshots
+            time.sleep(3)
+            continue
 
         for i, current_screenshot in enumerate(current_screenshots):
             last_screenshot = last_screenshots[i]
@@ -142,64 +154,31 @@ def record_screenshots_thread() -> None:
                 last_screenshots[i] = current_screenshot  # Update the last screenshot for this monitor
                 image = Image.fromarray(current_screenshot)
                 timestamp = int(time.time())
-                filename = f"{timestamp}_{i}.webp" # Add monitor index to filename for uniqueness
-                filepath = os.path.join(screenshots_path, filename)
+                filepath = os.path.join(screenshots_path, f"{timestamp}.webp")
                 image.save(
                     filepath,
                     format="webp",
                     lossless=True,
                 )
-                text: str = extract_text_from_image(current_screenshot)
+                text, boxes = extract_text_and_boxes(current_screenshot)
                 # Only proceed if OCR actually extracts text
                 if text.strip():
-                    embedding: np.ndarray = get_embedding(text)
-                    active_app_name: str = get_active_app_name() or "Unknown App"
-                    active_window_title: str = get_active_window_title() or "Unknown Title"
+                    if boxes:
+                        highlighted = highlight_text_boxes(image, boxes)
+                        highlighted.save(
+                            os.path.join(screenshots_path, f"{timestamp}_ocr.webp"),
+                            format="webp",
+                            lossless=True,
+                        )
+                    embedding = get_embedding(text)
+                    active_app_name = get_active_app_name() or "Unknown App"
+                    active_window_title = get_active_window_title() or "Unknown Title"
                     insert_entry(
-                        text, timestamp, embedding, active_app_name, active_window_title, filename # Pass filename
+                        text,
+                        timestamp,
+                        embedding,
+                        active_app_name,
+                        active_window_title,
                     )
 
-        time.sleep(3) # Wait before taking the next screenshot
-
-    return screenshots
-
-
-def record_screenshots_thread():
-    # TODO: fix the error from huggingface tokenizers
-    import os
-
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-    last_screenshots = take_screenshots()
-
-    while True:
-        if not is_user_active():
-            time.sleep(3)
-            continue
-
-        screenshots = take_screenshots()
-
-        for i, screenshot in enumerate(screenshots):
-
-            last_screenshot = last_screenshots[i]
-
-            if not is_similar(screenshot, last_screenshot):
-                last_screenshots[i] = screenshot
-                image = Image.fromarray(screenshot)
-                timestamp = int(time.time())
-                image.save(
-                    os.path.join(screenshots_path, f"{timestamp}.webp"),
-                    format="webp",
-                    lossless=True,
-                )
-                text: str = extract_text_from_image(current_screenshot)
-                # Only proceed if OCR actually extracts text
-                if text.strip():
-                    embedding: np.ndarray = get_embedding(text)
-                    active_app_name: str = get_active_app_name() or "Unknown App"
-                    active_window_title: str = get_active_window_title() or "Unknown Title"
-                    insert_entry(
-                        text, timestamp, embedding, active_app_name, active_window_title, filename # Pass filename
-                    )
-
-        time.sleep(3) # Wait before taking the next screenshot
+        time.sleep(3)  # Wait before taking the next screenshot

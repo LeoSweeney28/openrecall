@@ -148,9 +148,26 @@ def timeline():
 def search():
     q = request.args.get("q")
     entries = get_all_entries()
-    embeddings = [np.frombuffer(entry.embedding, dtype=np.float64) for entry in entries]
-    query_embedding = get_embedding(q)
-    similarities = [cosine_similarity(query_embedding, emb) for emb in embeddings]
+    if not entries:
+        return render_template_string(
+            """
+{% extends "base_template" %}
+{% block content %}
+    <div class="container">
+        <div class="alert alert-info" role="alert">
+            No entries found yet.
+        </div>
+    </div>
+{% endblock %}
+""",
+        )
+
+    embeddings = [entry.embedding for entry in entries]
+    query_embedding = get_embedding(q or "")
+    similarities = np.array(
+        [cosine_similarity(query_embedding, emb) for emb in embeddings]
+    )
+    similarities = np.nan_to_num(similarities, nan=-1.0)
     indices = np.argsort(similarities)[::-1]
     sorted_entries = [entries[i] for i in indices]
 

@@ -1,6 +1,12 @@
-import numpy as np
-from sentence_transformers import SentenceTransformer
 import logging
+from typing import Optional
+
+import numpy as np
+
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:  # pragma: no cover - optional dependency
+    SentenceTransformer = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -10,13 +16,24 @@ logger = logging.getLogger(__name__)
 MODEL_NAME: str = "all-MiniLM-L6-v2"
 EMBEDDING_DIM: int = 384  # Dimension for all-MiniLM-L6-v2
 
-# Load the model globally to avoid reloading it on every call
-try:
-    model = SentenceTransformer(MODEL_NAME)
-    logger.info(f"SentenceTransformer model '{MODEL_NAME}' loaded successfully.")
-except Exception as e:
-    logger.error(f"Failed to load SentenceTransformer model '{MODEL_NAME}': {e}")
-    model = None
+model: Optional["SentenceTransformer"] = None
+
+
+def _load_model() -> None:
+    global model
+    if model is not None:
+        return
+    if SentenceTransformer is None:
+        logger.warning(
+            "sentence-transformers is not installed. Embeddings will be zeros."
+        )
+        return
+    try:
+        model = SentenceTransformer(MODEL_NAME)
+        logger.info(f"SentenceTransformer model '{MODEL_NAME}' loaded successfully.")
+    except Exception as e:
+        logger.error(f"Failed to load SentenceTransformer model '{MODEL_NAME}': {e}")
+        model = None
 
 
 def get_embedding(text: str) -> np.ndarray:
@@ -35,8 +52,9 @@ def get_embedding(text: str) -> np.ndarray:
         or a zero vector if the input is empty, whitespace only, or the
         model failed to load. The array type is float32.
     """
+    _load_model()
     if model is None:
-        logger.error("SentenceTransformer model is not loaded. Returning zero vector.")
+        logger.error("SentenceTransformer model is not available. Returning zero vector.")
         return np.zeros(EMBEDDING_DIM, dtype=np.float32)
 
     if not text or text.isspace():
@@ -70,14 +88,14 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
     Returns:
         The cosine similarity score (float between -1 and 1),
-        or 0.0 if either vector has zero magnitude.
+        or NaN if either vector has zero magnitude.
     """
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
 
     if norm_a == 0 or norm_b == 0:
-        logger.warning("One or both vectors have zero magnitude. Returning 0 similarity.")
-        return 0.0
+        logger.warning("One or both vectors have zero magnitude. Returning NaN.")
+        return float("nan")
 
     similarity = np.dot(a, b) / (norm_a * norm_b)
     # Clip values to handle potential floating-point inaccuracies slightly outside [-1, 1]

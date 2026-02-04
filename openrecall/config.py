@@ -17,7 +17,7 @@ parser.add_argument(
     default=False,
 )
 
-args = parser.parse_args()
+args, _ = parser.parse_known_args()
 
 
 def get_appdata_folder(app_name="openrecall"):
